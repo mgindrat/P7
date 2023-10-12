@@ -2,13 +2,13 @@ const fs = require('fs');
 const Book = require('../models/book');
 
 
-
 // Controleur affichant tous les livres
 exports.getAllBooks = (req, res, next) => {
+    
     Book.find()
-        .then(book => res.status(200).json(book) )
-        .catch(error => res.status(400).json({ error}))
-        console.log((book => res.status(200).json(book)));
+        .then(books => res.status(200).json(books))
+        .catch(error => res.status(400).json({error}))
+        
 }
 
 //Controleur pour créer un livre
@@ -19,19 +19,19 @@ exports.createBook = (req, res, next) => {
     const book = new Book({
         ...bookObject,
         userId: req.auth.userId,
-        imageUrl: `${req.protocol}://${req.get('host')}/images/${req.file.filename}`,
+        imageUrl: `${req.protocol}://${req.get('host')}/images/${req.file.filename.replace(/\.jpeg|\.jpg|\.png/g, "_")}thumbnail.webp`
     });
-  
-    book.save()
+        book.save()
     .then(() => { res.status(201).json({message: 'Livre créé !'})})
     .catch(error => { res.status(400).json( { error })})
+    
  };
 
 // Controleur modifiant ou maj un livre
 exports.modifyBooks = (req, res, next) => {
     const bookObject = req.file ? {
         ...JSON.parse(req.body.book),
-        imageUrl: `${req.protocol}://${req.get('host')}/images/${req.file.filename}`
+        imageUrl: `${req.protocol}://${req.get('host')}/images/${req.file.filename.replace(/\.jpeg|\.jpg|\.png/g, "_")}thumbnail.webp`
     } : { ...req.body };
   
     delete bookObject._userId;
@@ -40,6 +40,13 @@ exports.modifyBooks = (req, res, next) => {
             if (book.userId != req.auth.userId) {
                 res.status(401).json({ message : 'Non authorizé'});
             } else {
+                if(bookObject.imageURL){
+                    const filenameThumb = book.imageUrl.split('/images/')[1];
+                    const filenameLarge = filenameThumb.split('_thumbnail')[0];
+                    fs.unlink(`images/${filenameLarge}.jpg`, () => { });
+                    fs.unlink(`images/${filenameLarge}.png`, () => { });
+                    fs.unlink(`images/${filenameThumb}`, () => { });
+                }
                 Book.updateOne({ _id: req.params.id}, { ...bookObject, _id: req.params.id})
                 .then(() => res.status(200).json({message : 'Livre modifié!'}))
                 .catch(error => res.status(401).json({ error }));
@@ -55,13 +62,19 @@ exports.deleteBooks = (req, res, next) => {
     Book.findOne({ _id: req.params.id})
        .then(book => {
            if (book.userId != req.auth.userId) {
-               res.status(401).json({message: 'Non authorizé'});
+               res.status(401).json({message: 'Non autorisé'});
            } else {
-               const filename = book.imageUrl.split('/images/')[1];
-               fs.unlink(`images/${filename}`, () => {
-                   Book.deleteOne({_id: req.params.id})
-                       .then(() => { res.status(200).json({message: 'Livre supprimé !'})})
-                       .catch(error => res.status(401).json({ error }));
+            // Récupérer le nom de fichier de l'image à partir de l'URL
+               const filenameThumb = book.imageUrl.split('/images/')[1];
+            //Supprime l'image du système de fichier
+                const filenameLarge = filenameThumb.split('_thumbnail')[0];
+                fs.unlink(`images/${filenameLarge}.jpg`, () => { });
+                fs.unlink(`images/${filenameLarge}.png`, () => { });
+                fs.unlink(`images/${filenameThumb}`, () => {
+            //Supprime le livre de la DB
+                Book.deleteOne({_id: req.params.id})
+                    .then(() => { res.status(200).json({message: 'Livre supprimé !'})})
+                    .catch(error => res.status(401).json({ error }));
                });
            }
        })
@@ -70,7 +83,7 @@ exports.deleteBooks = (req, res, next) => {
        });
 };
 
-// Controleur affichant un livre
+// Controleur affichant un livre par ID
 exports.getOneBooks = (req, res, next) => {
     Book.findOne({ _id: req.params.id })
       .then(book => res.status(200).json(book))
@@ -79,14 +92,29 @@ exports.getOneBooks = (req, res, next) => {
 
 // Controleur bestrating 
 exports.getBestRating = (req, res, next) => {
-    Book.find()
-      .sort({averageRating: -1})
-      .limit(3)
+    Book.find().sort({ averageRating: -1 }).limit(3)
       .then(books => res.status(200).json(books))
       .catch(error => res.status(400).json({error}))
 }
 
 //Controleur qui note les livres 
 exports.ratingBooks = (req, res, next) => {
-    
+    Book.findOne({ _id: req.params.id })
+    .then(book => {    
+        const AlreadyRated = book.ratings.find((book) => book.userId === req.auth.userId);
+          if ( !AlreadyRated) {
+            book.ratings.push({
+                userId: req.auth.userId,
+                grade: req.body.rating
+            })
+            let newAverageRating = book.ratings.reduce((accumulator, currentValue) => accumulator + currentValue.grade, 0)/book.ratings.length;
+            book.averageRating = newAverageRating;
+
+            return book.save()
+            } else {
+                res.status(401).json({message: 'Livre déjà noté'});
+            }
+        })
+    .then(book => res.status(201).json(book))
+    .catch(error => res.status(500).json({ error }));
 }
