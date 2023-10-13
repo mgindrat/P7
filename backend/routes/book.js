@@ -1,20 +1,21 @@
 const express = require('express');
 const router = express.Router();
 
-// Importation des middlewares et du controlleur stuff 
+// Importation des middlewares et du controlleur book
 const auth = require('../middleware/auth');
-const multer = require('../middleware/multer-config')
+const sharp = require('../middleware/sharp-config');
+const multer = require('../middleware/multer-config');
 const bookCtrl = require('../controllers/book');
 
+
 // Différentes utilisations des routes
-router.get('/', bookCtrl.getAllBooks);
+router.post('/', auth, multer, sharp, bookCtrl.createBook);
+router.put('/:id', auth, multer, sharp, bookCtrl.modifyBooks);
+router.delete('/:id', auth, bookCtrl.deleteBooks);
+router.post('/:id/rating', auth, bookCtrl.ratingBooks);
 router.get('/bestrating', bookCtrl.getBestRating);
 router.get('/:id', bookCtrl.getOneBooks);
-router.post('/', auth, multer, bookCtrl.createBook);
-router.post('/:id/rating', auth, bookCtrl.ratingBooks)
-router.put('/:id', auth, multer, bookCtrl.modifyBooks);
-router.delete('/:id', auth, bookCtrl.deleteBooks);
-
+router.get('/', bookCtrl.getAllBooks);
 
 //Exportation router
 module.exports = router;
